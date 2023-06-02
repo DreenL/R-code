@@ -1,0 +1,377 @@
+---
+title: "Exam Statistics For Large Data"
+author: "Anonymous"
+date: "01/06/2023"
+output:
+  html_document: default
+  toc: true # table of content true
+  pdf_document: default
+---
+
+\tableofcontents
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+# Installing and Loading pagkages
+In this section, install and load the relevant R packages
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(glmnet)
+
+
+library(cluster) 
+library(caret)
+```
+
+# Importing dataset
+Running following code will load the dataset in the variable "ExamDataset" 
+```{r}
+ExamDataset <- read.csv("https://raw.githubusercontent.com/HuguesLortieForgues/Miscellaneous/master/ExamDataset.csv")
+```
+
+```{r}
+glimpse(ExamDataset)
+```
+
+# Question 1
+```{r}
+linModel1=lm(Q1_response ~ Q1_1 + Q1_2, data = ExamDataset)
+summary(linModel1)
+```
+# Explain why it is necessary to interpret the results of this analysis with caution.
+By interpreting the results, I can know the direction of the relationship between the term and the response by looking at the sign of the coefficients; I can do summaries to questions like how much difference is there among groups and how much of a change do we see in a response for each unit change in an input; I can do inference like if the regression does explain the observed variance in the response variable; and I can even make a guess of error on predictions.
+
+In this example, the adjusted R2 is 0.9595, so roughly 95.95% of the variance found in the response variable can be explained by the predictors and which means the regression does explain the observed variance in the response variable since 0.9595 is so close to 1.  
+
+In this example, the Q1_response deviates from the regression line by approximately 12.6, on average. In other words, given that the mean of all Q1_response is -109.4445 and that the Residual Standard Error is 12.6 calculated with 497 degrees of freedom, I can say that the percentage error is (any prediction would still be off by) 11.51%. 
+
+
+# Additionally, discuss what steps can be taken to increase the confidence in the information produced by the model, and how these steps can address potential sources of bias or limitations of the model.
+
+```{r}
+plot(ExamDataset$Q1_1,ExamDataset$Q1_response, main="Q1_response versus Q1_1")
+plot(ExamDataset$Q1_2,ExamDataset$Q1_response, main="Q1_response versus Q1_2")
+
+
+
+plot(ExamDataset$Q1_1,linModel1$residuals, main="residuals versus Q1_1")
+abline(h=0,col=2)
+plot(ExamDataset$Q1_2,linModel1$residuals, main="residuals versus Q1_2")
+abline(h=0,col=2)
+
+hist(linModel1$residuals,breaks=15)
+
+qqnorm(linModel1$residuals)
+qqline(linModel1$residuals, col = "red")
+```
+```{r}
+plot(linModel1)
+```
+
+So the first linear model I have built is: Q1_response ∼ Normal(−109.4 + 0.4894 × Q1_1 + 15.1572 × Q1_2).
+
+looking at the scatterplots of "Q1_response versus Q1_1" and "Q1_response versus Q1_2", I see "Q1_response versus Q1_2" is linear and the data in "Q1_response versus Q1_1" is more shrink to the center, and from "residuals vs fitted" also showed symmetric, and the "qqplot" is roughly straight, which increases the confidence of the model.
+
+However, the limitations are also clear since "Q1_response versus Q1_1" has much more data under red line, "Q1_response versus Q1_2" is not even, the histogram of residual plot is not normally distributed and in "qqplot" the red line is not so fitting the main.
+
+
+
+
+
+# Question 2
+
+
+The response variable for a linear model to predict should be continuous to avoid problems. However, Q2_response is integer and not continuous.
+
+The problem is likely to happen as the predictor is added to the model, the response starts near zero and then diffusing outward. Hence, the relationship between the predictor and the response may not be linear. Such response data accepts only positive integer values, definitely no negative and not continuous then. 
+
+#Evidence:
+The linear model
+```{r}
+linModel2 <- glm(Q2_response ~  Q2_1 + Q2_2, data = ExamDataset,family=gaussian)
+summary(linModel2)
+```
+
+The Pt value here is high.
+```{r}
+ggplot(data = ExamDataset) +geom_histogram(aes(x = Q2_response), fill = "white", color = "black") +
+  labs(x = "Q2_response", y = "Frequency", title = "Q2_response Count")
+```
+From above, the distribution of Q2_response is not normally distributed and positive count then.
+
+```{r}
+plot(ExamDataset$Q2_2, ExamDataset$Q2_response, ylab = "Q2_response", xlab = "Q2_2", main = "Q2_response versus Q2_2")
+plot(ExamDataset$Q2_2, linModel2$residuals, xlab = "Q2_2", ylab = "Residuals", main = "Residuals versus Q2_2" )
+```
+From the above plots, I can see although it shows a linear pattern roughly, but which is very loose-fitting and the data is getting spread out as to the right and so I can see the variance is definitely not constant(also showed in residual plot) and so which proves to not use a linear model here.
+
+And for such response, the poisson and quassi poisson models were better choices for better predictions. 
+
+Poisson model
+```{r}
+POIModel2 <- glm(Q2_response ~  Q2_1 + Q2_2, family=poisson(), data = ExamDataset)
+```
+
+
+
+
+
+# Question 3
+
+Lets take a look at without and with random effect at first.
+
+Q3_response should be a factor(0 or 1) and we use binomial here
+
+Without random effect (Q3_1 as a fixed effect) 
+```{r}
+Q3fit <- glm(Q3_response ~ Q3_1, data = ExamDataset,family=binomial)
+summary(Q3fit)
+exp(Q3fit$coefficients)
+```
+
+With a random effect (Q3_1 as a fixed effect)
+```{r}
+fitrandom <- glmer(Q3_response ~ (1|Q3_1), data = ExamDataset,family = binomial)
+summary(fitrandom)
+```
+
+```{r}
+nrow(ExamDataset)
+```
+
+Random effects are estimated with partial pooling, while fixed effects are not. And this improves efficiency. By sharing information across groups, partial pooling can lead to more efficient estimates. It allows for borrowing of strength from other groups, resulting in more precise and reliable parameter estimates. And also this Stabilizes estimates, especially for smaller groups or subgroups with limited data. 
+
+In Q3_1, there are so many subgroups, however, there are only 500 data in Q3_response which is fairly limited as consider so many subgroups. Hence, treating the variable as a random effect is definitely better in Q3.
+
+
+```{r}
+Q33<-ranef(fitrandom)$Q3_1
+Q33
+```
+```{r}
+hist(Q33$`(Intercept)`,breaks=10)
+```
+
+With above evidence, I conclude using random effects is better.
+
+
+
+
+# Question 4
+```{r}
+NumData = ExamDataset %>% select(Q4_1,Q4_2,Q4_3)
+NumData <- scale(NumData)
+distData <- dist(NumData, method = "manhattan")
+NumData_scaled<-scale(as.matrix(NumData))
+```
+
+Then, I look for an optimal number of clusters using silhouette distance.
+```{r}
+silav2<-2:15
+for(i in 2:15){
+sili=silhouette(kmeans(NumData_scaled,centers=i)$cluster,distData)
+silav2[i]<-mean(sili[,3])
+}
+plot(2:15,silav2[2:15],type="l",xlab = "Number of Clusters", ylab = "Mean Silhouette Score", main ="Silhouette plot")
+```
+
+I see that the maximum occurs at 3 with mean width, respectively, 0.95.
+
+Create 3 clusters using K-means
+```{r}
+kclust3 <- kmeans(NumData, centers = 3)
+ExamDataset$cluster_kmean3 <- as.factor(kclust3$cluster)
+```
+
+Extract the location of the 3 centroids
+```{r}
+kclust3$centers
+```
+the total within-cluster sum of squares associated with 3 clusters
+```{r}
+kclust3$tot.withinss
+```
+Investigate what these look like using aggregate and table
+```{r}
+aggregate(NumData,list(kclust3$cluster),median)
+```
+
+```{r}
+sildd <- silhouette(as.numeric(ExamDataset$cluster_kmean3), distData)
+plot(sildd, col = c("blue", "green", "yellow"), border = NA, main = "Silhouette Plot")
+```
+
+Seems good. So the clusters are identified.
+
+
+Explore how the variables Age and YearGroup are associated with each cluster
+```{r}
+boxplot(ExamDataset$Age ~ kclust3$cluster, xlab = "Cluster", ylab = "Age", title="Age versus Cluster")
+```
+
+```{r}
+prop.table(table(ExamDataset$YearGroup, kclust3$cluster),1)
+```
+From above, clearly, the data is just assigned to each cluster probably by different Grade(Grade12,13,14) since I see that in table, there just 1 in each cluster and also in box plot, the mean is vary at 18, 16, 17 which proves my former guess.
+
+
+
+
+# Question 5
+
+Undertake the principal component analysis centering and scaling the data. 
+```{r}
+Q5_CAC <- ExamDataset %>% 
+                select(Q5_1,Q5_2,Q5_3,Q5_4,Q5_5,Q5_6)
+Q5 <- prcomp(Q5_CAC, center = TRUE, scale = TRUE)
+```
+
+Summarise the result
+```{r}
+summary(Q5)
+```
+
+From the above table, I can see that PC1 and PC2 is equivalent to almost 1.6 of the original variables, whereas others are only under 5% of one of the original variables; the PC1 and PC2 already by itself explain nearly half of the overall variance in the data, and others just decreases. Hence it indicates 1 or 2 dimensions in this data. And I check the proportion, With only 2 PC, we can explain close to 89.73% of the variance in the numerical data, but With 1, we explain 46.33%. Hence, I would summarise this by saying that there are really only about 2 dimensions in this data, with the remaining 4 representing noise. 
+
+Therefore, the answers given to the set of six questions can be effectively reduced to fewer dimensions.
+
+
+
+
+
+# Question 6
+```{r}
+Q6s<-as.vector(ExamDataset$Q6_response)
+Q6predict<-model.matrix(~.-1,ExamDataset[,c(22:31)])
+```
+
+fit the model
+```{r}
+Q6fit<-glmnet(Q6predict,Q6s)
+```
+
+```{r}
+plot(Q6fit,xvar = "lambda", label = TRUE)
+plot(Q6fit,xvar="dev")
+```
+
+Choosing lambda and variables with cv.glmnet
+```{r}
+Q6cv<-cv.glmnet(Q6predict,Q6s)
+plot(Q6cv)
+```
+
+From above plots, I can see there is no problem if I choose all predictors from Q6_1 to Q6_10 since 10 nonzero coefficients explains 100% of the deviance and minimize the error also. 
+
+But I can see that it is also reasonable to pick 6 predictors since 6 nonzero coefficients explains 80% of the deviance and the error is not too high. 
+
+To find these 6 predictors, I can see the log lambda is -1.2.
+```{r}
+Q6_coef6<-coef(Q6fit, s=exp(-1.2))
+Q6_coef6@Dimnames[[1]][1+Q6_coef6@i]
+```
+
+But lets back to 10 predictors.
+
+Fitting and evaluating the final model.
+
+To evaluate model quality, we will want to build the model on a training set and test it on a testing set.
+```{r}
+set.seed(321)
+training.samples <- createDataPartition(ExamDataset$Q6_response, p = 0.8, list = FALSE)
+train.data <- ExamDataset[training.samples, ]
+test.data <- ExamDataset[-training.samples, ]
+```
+
+Now we create the model on the training data.
+```{r}
+train.model <- lm(Q6_response ~ Q6_1+Q6_2+Q6_3+Q6_4+Q6_5+Q6_6+Q6_7+Q6_8+Q6_9+Q6_10,train.data)
+```
+
+Now we will make predictions on the testing set. 
+```{r}
+predictions <- predict(train.model, test.data)
+data.frame( R2 = R2(predictions, test.data$Q6_response),
+            RMSE = RMSE(predictions, test.data$Q6_response),
+            MAE = MAE(predictions, test.data$Q6_response))
+
+```
+
+So this is pretty good performance–the R2 is 1, which means there is a very good correlation between the predicted Q6_response and the actual Q6_response on the testing set.
+
+
+
+
+
+# Question 7
+```{r}
+ggplot(ExamDataset, aes(x = Q7_2, y = Q7_1)) + 
+  geom_violin() +
+  geom_jitter(shape = 16 , position=position_jitter(0.2), alpha = 0.45) +
+  labs(x = "Group",y = "Score", title = "Score for each group") +
+  theme_bw() +
+  theme(plot.title = element_text(size = 13),
+        axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 12)) +
+  stat_summary(fun.data = mean_sdl,geom = "point", color = "red", size = 4) 
+```
+
+
+
+# Question 8
+```{r}
+Q8 <- glm(Q8_response ~ Q8_1 * Q8_2, family=poisson(link="log"),data=ExamDataset)
+summary(Q8)
+exp(Q8$coefficients)
+```
+
+In this formula, there is an iteration term, which is the product of Q8_1 and groups in Q8_2. The term shows the influence of Q8_1 on Q8_response to differ between groups in Q8_2.
+
+The formula is E(Q8_response) = b0 + b1 × Q8_1 + b2 × Q8_2 + b3 × Q8_1 × Q8_2.
+
+The base here is Group A from Q8_2.
+
+# Question: For each group,determine the impact of a change of 1 unit in Q8_1 on the expected count of Q8_response.
+
+Changing Q8_1 by 1 unit will change the expected counts of goals by 78.6%, given group A in Q8_2.
+
+Changing Q8_1 by 1 unit will change the expected counts of goals by 131.69% = 78.6%+53.09%, given group B in Q8_2.
+
+Changing Q8_1 by 1 unit will change the expected counts of goals by 202.9% = 78.6%+124.3%, given group C in Q8_2.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
